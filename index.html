@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Харьков - Интерактивная Игровая Карта</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Pannellum CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.7/build/pannellum.css"/>
+
+  <!-- Custom Styles -->
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Custom Styling for Custom Street Labels */
+    .street-badge {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #f8fafc;
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      pointer-events: none; /* User can click through the badge to map */
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(4px);
+      transition: opacity 0.3s ease, transform 0.2s ease;
+      z-index: 10;
+    }
+
+    /* Light Theme Badges if toggled */
+    .light-theme .street-badge {
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(15, 23, 42, 0.15);
+      color: #0f172a;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Hide Google Maps Default UI elements we don't want */
+    .gmnoprint, .gm-style-cc {
+      display: none !important;
+    }
+
+    /* Scrollbar Styling for Sidebar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.05);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(15, 23, 42, 0.2);
+      border-radius: 3px;
+    }
+    .dark-mode-scroll::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.5);
+    }
+    .dark-mode-scroll::-webkit-scrollbar-thumb {
+      background: rgba(14, 165, 233, 0.3);
+      border-radius: 3px;
+    }
+
+    /* Custom CSS transitions */
+    .fade-in {
+      animation: fadeIn 0.4s ease-out forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 overflow-hidden w-screen h-screen flex flex-col md:flex-row">
+
+  <!-- Left Sidebar Panel -->
+  <aside class="w-full md:w-[380px] h-[45%] md:h-full bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 flex flex-col z-20 shadow-2xl relative">
+
+    <!-- Header -->
+    <div class="p-5 border-b border-slate-800 bg-slate-950/40">
+      <h1 class="text-xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-500 flex items-center gap-2">
+        <i class="fa-solid fa-gamepad text-sky-400 animate-pulse"></i>
+        GAME CITY MAP
+      </h1>
+      <p class="text-xs text-slate-400 font-medium mt-1">Интерактивная карта Харькова (Центр)</p>
+    </div>
+
+    <!-- Inner Scrollable Content -->
+    <div class="flex-1 overflow-y-auto p-5 space-y-6 dark-mode-scroll">
+
+      <!-- Interactive Map Controls -->
+      <section class="space-y-3">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Стиль и элементы</h2>
+
+        <!-- Theme Controls -->
+        <div class="grid grid-cols-3 gap-1.5 bg-slate-950/60 p-1 rounded-xl border border-slate-800/80 mb-3">
+          <button id="theme-btn-dark" onclick="setMapTheme('dark')" class="py-2 text-center rounded-lg text-xs font-semibold border transition-all duration-150 border-transparent text-slate-400 hover:text-white hover:bg-slate-800/50">
+            Темная
+          </button>
+          <button id="theme-btn-light" onclick="setMapTheme('light')" class="py-2 text-center rounded-lg text-xs font-semibold border transition-all duration-150 border-transparent text-slate-400 hover:text-white hover:bg-slate-800/50">
+            Светлая
+          </button>
+          <button id="theme-btn-satellite" onclick="setMapTheme('satellite')" class="py-2 text-center rounded-lg text-xs font-semibold border transition-all duration-150 bg-sky-500/10 text-sky-400 border-sky-500/20 shadow-sm">
+            Спутник
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <!-- Toggle Custom Street Labels -->
+          <button id="toggle-labels-btn" onclick="toggleStreetLabels()" class="flex flex-col items-center justify-center p-3 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 hover:bg-sky-500/20 transition-all duration-200">
+            <i class="fa-solid fa-tags text-lg mb-1.5"></i>
+            <span class="text-xs font-semibold">Имена улиц</span>
+          </button>
+
+          <!-- Toggle Panorama Icons -->
+          <button id="toggle-panoramas-btn" onclick="togglePanoramaMarkers()" class="flex flex-col items-center justify-center p-3 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 hover:bg-sky-500/20 transition-all duration-200">
+            <i class="fa-solid fa-camera text-lg mb-1.5"></i>
+            <span class="text-xs font-semibold">Панорамы 360°</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Drag Routing Panel -->
+      <section class="p-4 rounded-xl bg-slate-950/50 border border-slate-800/80 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <i class="fa-solid fa-route text-sky-400"></i>
+            ПРОКЛАДКА МАРШРУТА
+          </h2>
+          <button onclick="resetRoute()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2 py-1 rounded transition-colors">
+            Сбросить
+          </button>
+        </div>
+
+        <p class="text-xs text-slate-400 leading-relaxed">
+          Перетаскивайте маркеры <span class="text-emerald-400 font-semibold">A (Старт)</span> и <span class="text-rose-400 font-semibold">B (Финиш)</span> на карте. Маршрут автоматически проложится по дорогам!
+        </p>
+
+        <!-- Address displays -->
+        <div class="space-y-2 border-t border-slate-800/80 pt-3 text-xs">
+          <div class="flex items-start gap-2">
+            <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">A</span>
+            <div class="overflow-hidden">
+              <span class="text-slate-500 block font-medium">Точка старта:</span>
+              <span id="route-start-addr" class="text-slate-300 font-mono break-words text-[11px]">Определяется...</span>
+            </div>
+          </div>
+          <div class="flex items-start gap-2 pt-1">
+            <span class="w-5 h-5 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">B</span>
+            <div class="overflow-hidden">
+              <span class="text-slate-500 block font-medium">Точка финиша:</span>
+              <span id="route-end-addr" class="text-slate-300 font-mono break-words text-[11px]">Определяется...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Real-time metrics -->
+        <div class="grid grid-cols-2 gap-2 border-t border-slate-800/80 pt-3 text-center">
+          <div class="bg-slate-900/50 p-2 rounded-lg border border-slate-800/50">
+            <span class="text-[10px] text-slate-500 block uppercase font-bold">Расстояние</span>
+            <span id="route-distance" class="text-sm font-bold text-sky-400 font-mono">-</span>
+          </div>
+          <div class="bg-slate-900/50 p-2 rounded-lg border border-slate-800/50">
+            <span class="text-[10px] text-slate-500 block uppercase font-bold">В пути (машина)</span>
+            <span id="route-duration" class="text-sm font-bold text-sky-400 font-mono">-</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Quick Teleport Navigation -->
+      <section class="space-y-3">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+          <i class="fa-solid fa-location-crosshairs text-sky-400"></i>
+          БЫСТРАЯ НАВИГАЦИЯ
+        </h2>
+        <div class="space-y-1.5">
+          <button onclick="teleportTo(50.0050, 36.2345, 16)" class="w-full text-left p-2.5 rounded-xl bg-slate-800/50 border border-slate-800 hover:border-sky-500/30 hover:bg-slate-800 text-xs flex justify-between items-center group transition-all duration-200">
+            <span class="font-medium text-slate-300 group-hover:text-white">Улица Сумская (Центр)</span>
+            <i class="fa-solid fa-chevron-right text-slate-500 group-hover:text-sky-400 text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"></i>
+          </button>
+          <button onclick="teleportTo(50.0044, 36.2312, 15)" class="w-full text-left p-2.5 rounded-xl bg-slate-800/50 border border-slate-800 hover:border-sky-500/30 hover:bg-slate-800 text-xs flex justify-between items-center group transition-all duration-200">
+            <span class="font-medium text-slate-300 group-hover:text-white">Площадь Свободы (Госпром)</span>
+            <i class="fa-solid fa-chevron-right text-slate-500 group-hover:text-sky-400 text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"></i>
+          </button>
+          <button onclick="teleportTo(49.9958, 36.2326, 16)" class="w-full text-left p-2.5 rounded-xl bg-slate-800/50 border border-slate-800 hover:border-sky-500/30 hover:bg-slate-800 text-xs flex justify-between items-center group transition-all duration-200">
+            <span class="font-medium text-slate-300 group-hover:text-white">Площадь Конституции</span>
+            <i class="fa-solid fa-chevron-right text-slate-500 group-hover:text-sky-400 text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"></i>
+          </button>
+          <button onclick="teleportTo(50.0018, 36.2323, 17)" class="w-full text-left p-2.5 rounded-xl bg-slate-800/50 border border-slate-800 hover:border-sky-500/30 hover:bg-slate-800 text-xs flex justify-between items-center group transition-all duration-200">
+            <span class="font-medium text-slate-300 group-hover:text-white">Улица Рымарская</span>
+            <i class="fa-solid fa-chevron-right text-slate-500 group-hover:text-sky-400 text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"></i>
+          </button>
+          <button onclick="teleportTo(50.0040, 36.2440, 16)" class="w-full text-left p-2.5 rounded-xl bg-slate-800/50 border border-slate-800 hover:border-sky-500/30 hover:bg-slate-800 text-xs flex justify-between items-center group transition-all duration-200">
+            <span class="font-medium text-slate-300 group-hover:text-white">Улица Григория Сковороды</span>
+            <i class="fa-solid fa-chevron-right text-slate-500 group-hover:text-sky-400 text-[10px] transition-transform duration-200 group-hover:translate-x-0.5"></i>
+          </button>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Developer/Game Info Footer -->
+    <div class="p-4 border-t border-slate-800 bg-slate-950/40 text-[11px] text-slate-500 flex justify-between items-center">
+      <span>Лицензия игровых карт</span>
+      <span class="font-mono text-sky-500">v1.2.0</span>
+    </div>
+  </aside>
+
+  <!-- Main Map Container -->
+  <main class="flex-1 h-[55%] md:h-full relative bg-slate-900">
+    <div id="map" class="w-full h-full"></div>
+
+    <!-- Floating Map Tip Overlay -->
+    <div id="map-tip" class="absolute bottom-5 right-5 z-10 bg-slate-900/90 border border-slate-700/50 backdrop-blur-md px-4 py-3 rounded-xl shadow-2xl max-w-xs fade-in pointer-events-none flex items-start gap-3">
+      <i class="fa-solid fa-circle-info text-sky-400 text-lg mt-0.5 shrink-0"></i>
+      <div>
+        <p class="text-xs font-bold text-white">Игровая навигация</p>
+        <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+          Кликайте на значки <span class="text-sky-400 font-semibold">камеры</span> на дорогах, чтобы активировать 360-панораму вида из машины!
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Modal for Pannellum 360 Panorama -->
+  <div id="panorama-modal" class="fixed inset-0 z-50 hidden bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/40 w-full max-w-4xl rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[75vh] max-h-[600px] transform transition-transform duration-300">
+
+      <!-- Modal Header -->
+      <div class="px-6 py-4.5 border-b border-slate-800 flex justify-between items-center bg-slate-950/60">
+        <div>
+          <h3 id="panorama-title" class="text-white font-semibold text-base flex items-center gap-2">
+            <i class="fa-solid fa-street-view text-sky-400 text-lg"></i>
+            <span>Панорама 360°</span>
+          </h3>
+          <p id="panorama-coords" class="text-[10px] text-slate-500 font-mono mt-0.5"></p>
+        </div>
+        <button onclick="closePanorama()" class="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 p-2.5 rounded-xl transition-all duration-200">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Modal Content (Pannellum container) -->
+      <div class="flex-1 bg-black relative">
+        <div id="panorama-viewer" class="w-full h-full"></div>
+
+        <!-- Loading spinner -->
+        <div id="panorama-loader" class="absolute inset-0 flex items-center justify-center bg-slate-950/90 text-white z-10">
+          <div class="flex flex-col items-center gap-3">
+            <div class="w-10 h-10 border-4 border-sky-400 border-t-transparent rounded-full animate-spin"></div>
+            <span class="text-xs font-semibold tracking-wider uppercase text-slate-400">Загрузка панорамы...</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Toast Notification System -->
+  <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Pannellum Script -->
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/pannellum@2.5.7/build/pannellum.js"></script>
+
+  <!-- Google Maps JavaScript API with proper callback -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAT5FiEVL2EyA_07FpFn-2aYe7L4sC3LAc&libraries=geometry,places&callback=initMap" async defer></script>
+
+  <!-- Game Map App Logic -->
+  <script>
+    // Global variable pointers
+    let map;
+    let currentTheme = 'satellite'; // Default theme can be 'satellite', 'dark', 'light'
+    let streetLabels = [];
+    let streetLabelsVisible = true;
+    let panoramaMarkers = [];
+    let panoramaMarkersVisible = true;
+    let directionsService;
+    let directionsRenderer;
+    let startMarker;
+    let endMarker;
+    let pannellumViewer = null;
+
+    // Snazzy Maps Custom Minimal Grayscale Style (Dark Theme)
+    const DARK_MAP_STYLE = [
+      { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "all", "elementType": "labels.text.fill", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "all", "elementType": "labels.text.stroke", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "all", "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "administrative", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "poi", "elementType": "all", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "transit", "elementType": "all", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0f172a" }] },
+      { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
+      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#334155" }] },
+      { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#1e293b" }] }
+    ];
+
+    // Snazzy Maps Custom Minimal Grayscale Style (Light Theme)
+    const LIGHT_MAP_STYLE = [
+      { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "all", "elementType": "labels.text.fill", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "all", "elementType": "labels.text.stroke", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "all", "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "administrative", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "poi", "elementType": "all", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "transit", "elementType": "all", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#cbd5e1" }] },
+      { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#f1f5f9" }] },
+      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#ffffff" }] },
+      { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#e2e8f0" }] }
+    ];
+
+    // Snazzy Maps Custom Minimal Satellite Hybrid Style (Satellite view with clean road outlines, no default labels)
+    const HYBRID_MAP_STYLE = [
+      { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "all", "elementType": "labels.text.fill", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "all", "elementType": "labels.text.stroke", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "all", "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "administrative", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "poi", "elementType": "all", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "transit", "elementType": "all", "stylers": [{ "visibility": "off" }] },
+      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#334155" }, { "weight": 2.5 }] },
+      { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#1e293b" }, { "weight": 4 }] }
+    ];
+
+    // Custom Overlay View for Floating Street Labels
+    // Using native Google Maps OverlayView subclasses
+    class GameStreetLabel extends google.maps.OverlayView {
+      constructor(position, text) {
+        super();
+        this.position = position;
+        this.text = text;
+        this.div = null;
+      }
+
+      onAdd() {
+        this.div = document.createElement('div');
+        this.div.className = 'street-badge';
+        this.div.innerText = this.text;
+
+        const panes = this.getPanes();
+        panes.overlayLayer.appendChild(this.div);
+      }
+
+      draw() {
+        if (!this.div) return;
+        const projection = this.getProjection();
+        if (!projection) return;
+
+        const positionPixel = projection.fromLatLngToDivPixel(this.position);
+        if (!positionPixel) return;
+
+        this.div.style.left = positionPixel.x + 'px';
+        this.div.style.top = positionPixel.y + 'px';
+      }
+
+      onRemove() {
+        if (this.div) {
+          this.div.parentNode.removeChild(this.div);
+          this.div = null;
+        }
+      }
+    }
+
+    // 1. Initialize Map
+    function initMap() {
+      const startCenter = { lat: 50.0050, lng: 36.2345 }; // Center near Sumska Street Kharkiv
+
+      map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 15,
+        center: startCenter,
+        mapTypeId: google.maps.MapTypeId.HYBRID, // Satellite + Roads overlay by default
+        styles: HYBRID_MAP_STYLE, // Custom styled minimal road line styles & labels hidden
+        disableDefaultUI: true, // Hide default controls for a clean game screen look
+        zoomControl: true, // Only keep small zoom control
+        zoomControlOptions: {
+          position: google.maps.ControlPosition.RIGHT_BOTTOM
+        }
+      });
+
+      // Show welcome toast
+      showToast("Карта успешно инициализирована!", "success");
+
+      // Initialize all premium game systems
+      initStreetLabels();
+      initPanoramaMarkers();
+      initRoutingSystem();
+    }
+
+    // 2. Custom street labels dataset (Central Kharkiv streets & locations)
+    function initStreetLabels() {
+      const streetsData = [
+        { lat: 50.0001, lng: 36.2335, name: "СУМСКАЯ УЛИЦА" },
+        { lat: 50.0022, lng: 36.2339, name: "СУМСКАЯ УЛИЦА" },
+        { lat: 50.0050, lng: 36.2345, name: "СУМСКАЯ УЛИЦА" },
+        { lat: 50.0076, lng: 36.2366, name: "СУМСКАЯ УЛИЦА" },
+        { lat: 50.0150, lng: 36.2428, name: "СУМСКАЯ УЛИЦА" },
+
+        { lat: 49.9958, lng: 36.2326, name: "ПЛОЩАДЬ КОНСТИТУЦИИ" },
+        { lat: 50.0044, lng: 36.2312, name: "ПЛОЩАДЬ СВОБОДЫ" },
+        { lat: 50.0058, lng: 36.2355, name: "ПЛОЩАДЬ СВОБОДЫ" },
+
+        { lat: 49.9985, lng: 36.2315, name: "РЫМАРСКАЯ УЛИЦА" },
+        { lat: 50.0018, lng: 36.2323, name: "РЫМАРСКАЯ УЛИЦА" },
+
+        { lat: 49.9995, lng: 36.2385, name: "УЛИЦА ГРИГОРИЯ СКОВОРОДЫ" },
+        { lat: 50.0040, lng: 36.2440, name: "УЛИЦА ГРИГОРИЯ СКОВОРОДЫ" },
+        { lat: 50.0090, lng: 36.2485, name: "УЛИЦА ГРИГОРИЯ СКОВОРОДЫ" },
+
+        { lat: 50.0015, lng: 36.2370, name: "ЧЕРНЫШЕВСКАЯ УЛИЦА" },
+        { lat: 50.0060, lng: 36.2415, name: "ЧЕРНЫШЕВСКАЯ УЛИЦА" },
+
+        { lat: 50.0020, lng: 36.2355, name: "МИРОНОСИЦКАЯ УЛИЦА" },
+        { lat: 50.0075, lng: 36.2400, name: "МИРОНОСИЦКАЯ УЛИЦА" },
+
+        { lat: 49.9990, lng: 36.2340, name: "УЛИЦА ГОГОЛЯ" },
+        { lat: 50.0095, lng: 36.2345, name: "УЛИЦА ТРИНКЛЕРА" },
+
+        { lat: 50.0065, lng: 36.2270, name: "ПРОСПЕКТ НАУКИ" },
+        { lat: 50.0135, lng: 36.2230, name: "ПРОСПЕКТ НАУКИ" },
+
+        { lat: 49.9960, lng: 36.2240, name: "КЛОЧКОВСКАЯ УЛИЦА" },
+        { lat: 50.0010, lng: 36.2235, name: "КЛОЧКОВСКАЯ УЛИЦА" },
+
+        { lat: 50.0085, lng: 36.2410, name: "УЛИЦА ЯРОСЛАВА МУДРОГО" },
+        { lat: 50.0030, lng: 36.2310, name: "САД ШЕВЧЕНКО" },
+        { lat: 50.0175, lng: 36.2450, name: "ПАРК ГОРЬКОГО" },
+        { lat: 50.0003, lng: 36.2345, name: "ТЕАТРАЛЬНАЯ ПЛОЩАДЬ" }
+      ];
+
+      streetsData.forEach(data => {
+        const label = new GameStreetLabel(new google.maps.LatLng(data.lat, data.lng), data.name);
+        label.setMap(map);
+        streetLabels.push(label);
+      });
+    }
+
+    // Toggle custom labels visibility
+    function toggleStreetLabels() {
+      streetLabelsVisible = !streetLabelsVisible;
+      streetLabels.forEach(label => {
+        label.setMap(streetLabelsVisible ? map : null);
+      });
+
+      const btn = document.getElementById('toggle-labels-btn');
+      if (streetLabelsVisible) {
+        btn.className = "flex flex-col items-center justify-center p-3 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 hover:bg-sky-500/20 transition-all duration-200";
+        showToast("Текстовые плашки улиц включены", "info");
+      } else {
+        btn.className = "flex flex-col items-center justify-center p-3 rounded-xl bg-slate-800 text-slate-400 border border-transparent hover:bg-slate-700 hover:text-slate-200 transition-all duration-200";
+        showToast("Текстовые плашки улиц выключены", "info");
+      }
+    }
+
+    // 3. 360-degree street panoramas system
+    const PANORAMAS_LIST = [
+      {
+        lat: 50.0015,
+        lng: 36.2338,
+        title: "Зеркальная Струя (Сумская)",
+        imageUrl: "https://pannellum.org/images/alma.jpg"
+      },
+      {
+        lat: 50.0055,
+        lng: 36.2305,
+        title: "Площадь Свободы / Госпром",
+        imageUrl: "https://pannellum.org/images/tocopilla.jpg"
+      },
+      {
+        lat: 50.0155,
+        lng: 36.2435,
+        title: "Парк Горького (Сумская)",
+        imageUrl: "https://pannellum.org/images/cerro-toco-0.jpg"
+      },
+      {
+        lat: 49.9950,
+        lng: 36.2318,
+        title: "Площадь Конституции",
+        imageUrl: "https://pannellum.org/images/bma-0.jpg"
+      }
+    ];
+
+    function initPanoramaMarkers() {
+      PANORAMAS_LIST.forEach(data => {
+        const marker = new google.maps.Marker({
+          position: { lat: data.lat, lng: data.lng },
+          map: map,
+          title: data.title,
+          icon: {
+            url: "https://img.icons8.com/color/48/panoramic-view.png", // High quality panoramic camera icon
+            scaledSize: new google.maps.Size(38, 38)
+          }
+        });
+
+        marker.addListener('click', () => {
+          openPanorama(data.lat, data.lng, data.title, data.imageUrl);
+        });
+
+        panoramaMarkers.push(marker);
+      });
+    }
+
+    function togglePanoramaMarkers() {
+      panoramaMarkersVisible = !panoramaMarkersVisible;
+      panoramaMarkers.forEach(marker => {
+        marker.setMap(panoramaMarkersVisible ? map : null);
+      });
+
+      const btn = document.getElementById('toggle-panoramas-btn');
+      if (panoramaMarkersVisible) {
+        btn.className = "flex flex-col items-center justify-center p-3 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 hover:bg-sky-500/20 transition-all duration-200";
+        showToast("Маркеры 360-панорам показаны", "info");
+      } else {
+        btn.className = "flex flex-col items-center justify-center p-3 rounded-xl bg-slate-800 text-slate-400 border border-transparent hover:bg-slate-700 hover:text-slate-200 transition-all duration-200";
+        showToast("Маркеры 360-панорам скрыты", "info");
+      }
+    }
+
+    // Open Pannellum Panorama Viewer in modal
+    function openPanorama(lat, lng, title, imageUrl) {
+      const modal = document.getElementById('panorama-modal');
+      document.getElementById('panorama-title').querySelector('span').innerText = `Панорама 360°: ${title}`;
+      document.getElementById('panorama-coords').innerText = `Координаты съемки: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+      // Reset view & show modal
+      modal.classList.remove('hidden');
+      const loader = document.getElementById('panorama-loader');
+      loader.classList.remove('hidden');
+
+      // If viewer already exists, destroy it
+      if (pannellumViewer) {
+        try { pannellumViewer.destroy(); } catch(e) {}
+        pannellumViewer = null;
+      }
+
+      // Load Pannellum
+      setTimeout(() => {
+        try {
+          pannellumViewer = pannellum.viewer('panorama-viewer', {
+            "type": "equirectangular",
+            "panorama": imageUrl,
+            "autoLoad": true,
+            "compass": true,
+            "showZoomCtrl": true,
+            "showFullscreenCtrl": false
+          });
+
+          pannellumViewer.on('load', () => {
+            loader.classList.add('hidden');
+          });
+        } catch(err) {
+          loader.classList.add('hidden');
+          showToast("Ошибка запуска панорамы 360°", "error");
+        }
+      }, 150);
+    }
+
+    function closePanorama() {
+      document.getElementById('panorama-modal').classList.add('hidden');
+      if (pannellumViewer) {
+        try { pannellumViewer.destroy(); } catch(e) {}
+        pannellumViewer = null;
+      }
+    }
+
+    // 4. Real-time Snapping Draggable Routing System
+    function initRoutingSystem() {
+      directionsService = new google.maps.DirectionsService();
+
+      // Polyline options styled to match sleek neon dashboard theme
+      directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        draggable: true,
+        suppressMarkers: true, // We draw customized stylish markers
+        polylineOptions: {
+          strokeColor: '#0ea5e9', // Sky blue
+          strokeOpacity: 0.85,
+          strokeWeight: 6
+        }
+      });
+
+      // Default start/end coords
+      const defaultStart = new google.maps.LatLng(50.0001, 36.2335); // Start of Sumska
+      const defaultEnd = new google.maps.LatLng(50.0076, 36.2366);   // Sumska St near Freedom Square
+
+      startMarker = new google.maps.Marker({
+        position: defaultStart,
+        map: map,
+        draggable: true,
+        title: "Точка старта (A)",
+        icon: {
+          url: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
+          scaledSize: new google.maps.Size(42, 42)
+        }
+      });
+
+      endMarker = new google.maps.Marker({
+        position: defaultEnd,
+        map: map,
+        draggable: true,
+        title: "Точка финиша (B)",
+        icon: {
+          url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+          scaledSize: new google.maps.Size(42, 42)
+        }
+      });
+
+      // Recalculate route when start/end markers are dragged
+      startMarker.addListener('dragend', calculateRoute);
+      endMarker.addListener('dragend', calculateRoute);
+
+      // Listener for route drag changes (updates start/end position directly if path gets dragged!)
+      directionsRenderer.addListener('directions_changed', () => {
+        const result = directionsRenderer.getDirections();
+        if (result) {
+          const leg = result.routes[0].legs[0];
+          startMarker.setPosition(leg.start_location);
+          endMarker.setPosition(leg.end_location);
+          updateRouteMetrics(leg);
+        }
+      });
+
+      calculateRoute();
+    }
+
+    function calculateRoute() {
+      const origin = startMarker.getPosition();
+      const destination = endMarker.getPosition();
+
+      directionsService.route({
+        origin: origin,
+        destination: destination,
+        travelMode: google.maps.TravelMode.DRIVING
+      }, (response, status) => {
+        if (status === 'OK') {
+          directionsRenderer.setDirections(response);
+          const leg = response.routes[0].legs[0];
+          updateRouteMetrics(leg);
+        } else {
+          showToast("Ошибка прокладки пути по дорогам.", "error");
+        }
+      });
+    }
+
+    function updateRouteMetrics(leg) {
+      document.getElementById('route-start-addr').innerText = leg.start_address;
+      document.getElementById('route-end-addr').innerText = leg.end_address;
+      document.getElementById('route-distance').innerText = leg.distance.text;
+      document.getElementById('route-duration').innerText = leg.duration.text;
+    }
+
+    function resetRoute() {
+      const defaultStart = new google.maps.LatLng(50.0001, 36.2335);
+      const defaultEnd = new google.maps.LatLng(50.0076, 36.2366);
+
+      startMarker.setPosition(defaultStart);
+      endMarker.setPosition(defaultEnd);
+
+      map.panTo(defaultStart);
+      calculateRoute();
+      showToast("Маршрут сброшен к исходным точкам", "success");
+    }
+
+    // 5. General Helpers & UI Navigation
+    function teleportTo(lat, lng, zoom = 16) {
+      const target = { lat, lng };
+      map.setZoom(zoom);
+      map.panTo(target);
+      showToast("Камера перемещена на выбранную улицу", "success");
+    }
+
+    function setMapTheme(theme) {
+      currentTheme = theme;
+
+      const btnDark = document.getElementById('theme-btn-dark');
+      const btnLight = document.getElementById('theme-btn-light');
+      const btnSatellite = document.getElementById('theme-btn-satellite');
+
+      // Reset button classes
+      const inactiveClass = "py-2 text-center rounded-lg text-xs font-semibold border transition-all duration-150 border-transparent text-slate-400 hover:text-white hover:bg-slate-800/50";
+      const activeClass = "py-2 text-center rounded-lg text-xs font-semibold border transition-all duration-150 bg-sky-500/10 text-sky-400 border-sky-500/20 shadow-sm";
+
+      btnDark.className = inactiveClass;
+      btnLight.className = inactiveClass;
+      btnSatellite.className = inactiveClass;
+
+      if (theme === 'dark') {
+        map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+        map.setOptions({ styles: DARK_MAP_STYLE });
+        document.body.classList.remove('light-theme');
+        btnDark.className = activeClass;
+        showToast("Включена темная тема карты", "info");
+      } else if (theme === 'light') {
+        map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+        map.setOptions({ styles: LIGHT_MAP_STYLE });
+        document.body.classList.add('light-theme');
+        btnLight.className = activeClass;
+        showToast("Включена светлая тема карты", "info");
+      } else if (theme === 'satellite') {
+        map.setMapTypeId(google.maps.MapTypeId.HYBRID);
+        map.setOptions({ styles: HYBRID_MAP_STYLE });
+        document.body.classList.remove('light-theme');
+        btnSatellite.className = activeClass;
+        showToast("Включена спутниковая карта со стилизованными дорогами", "info");
+      }
+    }
+
+    // Toast Notification Maker
+    function showToast(message, type = "info") {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+
+      let icon = '<i class="fa-solid fa-circle-info text-sky-400"></i>';
+      let border = 'border-slate-800';
+      if (type === "success") {
+        icon = '<i class="fa-solid fa-circle-check text-emerald-400"></i>';
+        border = 'border-emerald-500/30';
+      } else if (type === "error") {
+        icon = '<i class="fa-solid fa-circle-exclamation text-rose-400"></i>';
+        border = 'border-rose-500/30';
+      }
+
+      toast.className = `flex items-center gap-3 bg-slate-900/95 border ${border} text-white px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md text-xs font-semibold fade-in w-72 pointer-events-auto`;
+      toast.innerHTML = `
+        ${icon}
+        <span class="flex-1">${message}</span>
+      `;
+
+      container.appendChild(toast);
+
+      // Auto-remove after 3.5 seconds
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        toast.style.transition = 'all 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+  </script>
+</body>
+</html>
