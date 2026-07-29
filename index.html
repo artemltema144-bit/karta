@@ -856,7 +856,8 @@
 
     // OSRM (OpenStreetMap) Road Routing integration
     function calculateOSRMRoute(origin, destination) {
-      const url = `https://router.project-osrm.org/route/v1/driving/${origin.lng()},${origin.lat()};${destination.lng()},${destination.lat()}?overview=full&geometries=geojson`;
+      // Using official OpenStreetMap community routed-car instance for guaranteed availability
+      const url = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${origin.lng()},${origin.lat()};${destination.lng()},${destination.lat()}?overview=full&geometries=geojson`;
 
       fetch(url)
         .then(res => res.json())
