@@ -504,10 +504,30 @@
       return pathCoords;
     }
 
+    function haversineDistance(p1, p2) {
+      const R = 6371e3; // Earth radius in meters
+      const lat1 = typeof p1.lat === 'function' ? p1.lat() : p1.lat;
+      const lon1 = typeof p1.lng === 'function' ? p1.lng() : p1.lng;
+      const lat2 = typeof p2.lat === 'function' ? p2.lat() : p2.lat;
+      const lon2 = typeof p2.lng === 'function' ? p2.lng() : p2.lng;
+
+      const phi1 = lat1 * Math.PI / 180;
+      const phi2 = lat2 * Math.PI / 180;
+      const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+      const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+      const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                Math.cos(phi1) * Math.cos(phi2) *
+                Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+      return R * c; // in meters
+    }
+
     function calculateLatLngPathDistance(points) {
       let totalMeters = 0;
       for (let i = 0; i < points.length - 1; i++) {
-        totalMeters += google.maps.geometry.spherical.computeDistanceBetween(points[i], points[i + 1]);
+        totalMeters += haversineDistance(points[i], points[i + 1]);
       }
       return totalMeters;
     }
@@ -974,21 +994,26 @@
         customRoutePolyline = null;
       }
 
-      directionsService.route({
-        origin: origin,
-        destination: destination,
-        travelMode: google.maps.TravelMode.DRIVING
-      }, (response, status) => {
-        if (status === 'OK') {
-          directionsRenderer.setDirections(response);
-          const leg = response.routes[0].legs[0];
-          updateRouteMetrics(leg);
-        } else {
-          // If Google Directions fails (no billing / keys limits), use OSRM (OpenStreetMap Routing) Fallback
-          console.warn("Google Directions Service failed. Falling back to OSRM.");
-          calculateOSRMRoute(origin, destination);
-        }
-      });
+      try {
+        directionsService.route({
+          origin: origin,
+          destination: destination,
+          travelMode: google.maps.TravelMode.DRIVING
+        }, (response, status) => {
+          if (status === 'OK') {
+            directionsRenderer.setDirections(response);
+            const leg = response.routes[0].legs[0];
+            updateRouteMetrics(leg);
+          } else {
+            // If Google Directions fails (no billing / keys limits), use OSRM (OpenStreetMap Routing) Fallback
+            console.warn("Google Directions Service failed. Falling back to OSRM.");
+            calculateOSRMRoute(origin, destination);
+          }
+        });
+      } catch (err) {
+        console.warn("Google directionsService.route threw exception. Falling back to OSRM directly:", err);
+        calculateOSRMRoute(origin, destination);
+      }
     }
 
     // OSRM (OpenStreetMap) Road Routing integration
