@@ -25,48 +25,6 @@
       font-family: 'Roboto', 'Inter', sans-serif;
     }
 
-    /* Authentic Google Maps Floating Street labels without box wrappers, using pristine white halo text */
-    .street-badge {
-      position: absolute;
-      transform: translate(-50%, -50%);
-      background: transparent !important;
-      border: none !important;
-      box-shadow: none !important;
-      backdrop-filter: none !important;
-      color: #5c5c5c;
-      font-family: 'Roboto', sans-serif;
-      font-size: 10.5px;
-      font-weight: 500;
-      letter-spacing: 0.01em;
-      white-space: nowrap;
-      pointer-events: none; /* User clicks through to the map */
-      text-shadow:
-        -1.5px -1.5px 0 #fff,
-         1.5px -1.5px 0 #fff,
-        -1.5px  1.5px 0 #fff,
-         1.5px  1.5px 0 #fff,
-        -1.5px  0px   0 #fff,
-         1.5px  0px   0 #fff,
-         0px   -1.5px 0 #fff,
-         0px    1.5px 0 #fff; /* Pristine 8-directional white halo/glow matching Google Maps labels */
-      transition: opacity 0.3s ease;
-      z-index: 10;
-    }
-
-    /* Dark & Satellite Hybrid Modes high-contrast text overlay styling */
-    .dark-theme .street-badge, .satellite-theme .street-badge {
-      color: #c9cbce;
-      text-shadow:
-        -1.5px -1.5px 0 #111827,
-         1.5px -1.5px 0 #111827,
-        -1.5px  1.5px 0 #111827,
-         1.5px  1.5px 0 #111827,
-        -1.5px  0px   0 #111827,
-         1.5px  0px   0 #111827,
-         0px   -1.5px 0 #111827,
-         0px    1.5px 0 #111827; /* Dark slate halo/glow for maximum contrast over satellite roads */
-    }
-
     /* Hide default Google UI we don't want */
     .gmnoprint, .gm-style-cc {
       display: none !important;
@@ -381,7 +339,6 @@
     // Global variable pointers
     let map;
     let currentTheme = 'satellite'; // 'satellite', 'dark', 'light'
-    let streetLabels = [];
     let streetLabelsVisible = true;
     let panoramaMarkers = [];
     let panoramaMarkersVisible = true;
@@ -389,7 +346,6 @@
     let directionsRenderer;
     let startMarker;
     let endMarker;
-    let GameStreetLabelClass = null; // Defined safely inside initMap to prevent early extends undefined
     let customRoutePolyline = null;
     let pannellumViewer = null;
     let activeInputId = null;
@@ -546,48 +502,43 @@
       return totalMeters;
     }
 
-    // Snazzy Maps Custom Minimal Grayscale Style (Dark Theme)
-    const DARK_MAP_STYLE = [
-      { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "all", "elementType": "labels.text.fill", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "all", "elementType": "labels.text.stroke", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "all", "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "administrative", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "poi", "elementType": "all", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "transit", "elementType": "all", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0f172a" }] },
-      { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
-      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#334155" }] },
-      { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#1e293b" }] }
-    ];
+    // Dynamic styled maps rules builder supporting toggling road labels
+    function getMapStyle(theme, labelsVisible) {
+      const visibility = labelsVisible ? "on" : "off";
 
-    // Snazzy Maps Custom Minimal Grayscale Style (Light Theme)
-    const LIGHT_MAP_STYLE = [
-      { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "all", "elementType": "labels.text.fill", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "all", "elementType": "labels.text.stroke", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "all", "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "administrative", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "poi", "elementType": "all", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "transit", "elementType": "all", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#cbd5e1" }] },
-      { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#f1f5f9" }] },
-      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#ffffff" }] },
-      { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#e2e8f0" }] }
-    ];
-
-    // Snazzy Maps Custom Minimal Satellite Hybrid Style
-    const HYBRID_MAP_STYLE = [
-      { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "all", "elementType": "labels.text.fill", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "all", "elementType": "labels.text.stroke", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "all", "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "administrative", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "poi", "elementType": "all", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "transit", "elementType": "all", "stylers": [{ "visibility": "off" }] },
-      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#334155" }, { "weight": 2.5 }] },
-      { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#1e293b" }, { "weight": 4 }] }
-    ];
+      if (theme === 'dark') {
+        return [
+          { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
+          { "featureType": "road", "elementType": "labels", "stylers": [{ "visibility": visibility }] },
+          { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#9ca3af" }] },
+          { "featureType": "road", "elementType": "labels.text.stroke", "stylers": [{ "color": "#1f2937" }, { "weight": 3 }] },
+          { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0f172a" }] },
+          { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
+          { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#334155" }] },
+          { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#1e293b" }] }
+        ];
+      } else if (theme === 'light') {
+        return [
+          { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
+          { "featureType": "road", "elementType": "labels", "stylers": [{ "visibility": visibility }] },
+          { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#4b5563" }] },
+          { "featureType": "road", "elementType": "labels.text.stroke", "stylers": [{ "color": "#ffffff" }, { "weight": 3 }] },
+          { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#cbd5e1" }] },
+          { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#f1f5f9" }] },
+          { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#ffffff" }] },
+          { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#e2e8f0" }] }
+        ];
+      } else if (theme === 'satellite') {
+        return [
+          { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
+          { "featureType": "road", "elementType": "labels", "stylers": [{ "visibility": visibility }] },
+          { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#f3f4f6" }] },
+          { "featureType": "road", "elementType": "labels.text.stroke", "stylers": [{ "color": "#111827" }, { "weight": 3 }] },
+          { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#334155" }, { "weight": 2.5 }] },
+          { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#1e293b" }, { "weight": 4 }] }
+        ];
+      }
+    }
 
     // Initialize Map
     function initMap() {
@@ -597,116 +548,22 @@
         zoom: 15,
         center: startCenter,
         mapTypeId: google.maps.MapTypeId.HYBRID,
-        styles: HYBRID_MAP_STYLE,
+        styles: getMapStyle('satellite', true),
         disableDefaultUI: true
       });
-
-      // Safely declare custom overlay class now that google namespace exists
-      class GameStreetLabel extends google.maps.OverlayView {
-        constructor(position, text, angle = 0) {
-          super();
-          this.position = position;
-          this.text = text;
-          this.angle = angle;
-          this.div = null;
-        }
-
-        onAdd() {
-          this.div = document.createElement('div');
-          this.div.className = 'street-badge';
-          this.div.innerText = this.text;
-
-          const panes = this.getPanes();
-          panes.overlayLayer.appendChild(this.div);
-        }
-
-        draw() {
-          if (!this.div) return;
-          const projection = this.getProjection();
-          if (!projection) return;
-
-          const positionPixel = projection.fromLatLngToDivPixel(this.position);
-          if (!positionPixel) return;
-
-          this.div.style.left = positionPixel.x + 'px';
-          this.div.style.top = positionPixel.y + 'px';
-          this.div.style.transform = `translate(-50%, -50%) rotate(${this.angle}deg)`;
-        }
-
-        onRemove() {
-          if (this.div) {
-            this.div.parentNode.removeChild(this.div);
-            this.div = null;
-          }
-        }
-      }
-
-      GameStreetLabelClass = GameStreetLabel;
 
       // Show welcome toast
       showToast("Карта успешно инициализирована!", "success");
 
       // Initialize game features
-      initStreetLabels();
       initPanoramaMarkers();
       initRoutingSystem();
       setupAutocomplete();
     }
 
-    // Custom street labels dataset (Central Kharkiv streets & locations with exact street-aligned rotation angles)
-    function initStreetLabels() {
-      const streetsData = [
-        { lat: 50.0001, lng: 36.2335, name: "ул. Сумская", angle: -78 },
-        { lat: 50.0022, lng: 36.2339, name: "ул. Сумская", angle: -78 },
-        { lat: 50.0050, lng: 36.2345, name: "ул. Сумская", angle: -78 },
-        { lat: 50.0076, lng: 36.2366, name: "ул. Сумская", angle: -78 },
-        { lat: 50.0150, lng: 36.2428, name: "ул. Сумская", angle: -78 },
-
-        { lat: 49.9958, lng: 36.2326, name: "пл. Конституции", angle: 0 },
-        { lat: 50.0044, lng: 36.2312, name: "пл. Свободы", angle: 0 },
-        { lat: 50.0058, lng: 36.2355, name: "пл. Свободы", angle: 0 },
-
-        { lat: 49.9985, lng: 36.2315, name: "ул. Рымарская", angle: -78 },
-        { lat: 50.0018, lng: 36.2323, name: "ул. Рымарская", angle: -78 },
-
-        { lat: 49.9995, lng: 36.2385, name: "ул. Григория Сковороды", angle: 48 },
-        { lat: 50.0040, lng: 36.2440, name: "ул. Григория Сковороды", angle: 48 },
-        { lat: 50.0090, lng: 36.2485, name: "ул. Григория Сковороды", angle: 48 },
-
-        { lat: 50.0015, lng: 36.2370, name: "ул. Чернышевская", angle: -78 },
-        { lat: 50.0060, lng: 36.2415, name: "ул. Чернышевская", angle: -78 },
-
-        { lat: 50.0020, lng: 36.2355, name: "ул. Мироносицкая", angle: -78 },
-        { lat: 50.0075, lng: 36.2400, name: "ул. Мироносицкая", angle: -78 },
-
-        { lat: 49.9990, lng: 36.2340, name: "ул. Гоголя", angle: -78 },
-        { lat: 50.0095, lng: 36.2345, name: "ул. Тринклера", angle: -85 },
-
-        { lat: 50.0065, lng: 36.2270, name: "просп. Науки", angle: -40 },
-        { lat: 50.0135, lng: 36.2230, name: "просп. Науки", angle: -40 },
-
-        { lat: 49.9960, lng: 36.2240, name: "ул. Клочковская", angle: -80 },
-        { lat: 50.0010, lng: 36.2235, name: "ул. Клочковская", angle: -80 },
-
-        { lat: 50.0085, lng: 36.2410, name: "ул. Ярослава Мудрого", angle: 10 },
-        { lat: 50.0030, lng: 36.2310, name: "сад им. Т. Г. Шевченко", angle: 0 },
-        { lat: 50.0175, lng: 36.2450, name: "Центральный парк", angle: 0 },
-        { lat: 50.0003, lng: 36.2345, name: "Театральная пл.", angle: 0 }
-      ];
-
-      streetsData.forEach(data => {
-        const label = new GameStreetLabelClass(new google.maps.LatLng(data.lat, data.lng), data.name, data.angle || 0);
-        label.setMap(map);
-        streetLabels.push(label);
-      });
-    }
-
     // Toggle custom labels visibility
     function toggleStreetLabels() {
       streetLabelsVisible = !streetLabelsVisible;
-      streetLabels.forEach(label => {
-        label.setMap(streetLabelsVisible ? map : null);
-      });
 
       const btn = document.getElementById('floating-toggle-labels');
       if (streetLabelsVisible) {
@@ -716,6 +573,8 @@
         btn.innerHTML = '<i class="fa-solid fa-tags text-base text-gray-400"></i>';
         showToast("Названия улиц выключены", "info");
       }
+
+      setMapTheme(currentTheme);
     }
 
     // 360-degree street panoramas dataset
@@ -1306,22 +1165,26 @@
       thumbDark.className = "w-12 h-12 rounded-lg border-2 border-transparent hover:border-[#1a73e8] overflow-hidden shadow-sm bg-gray-900 flex items-center justify-center text-white";
       thumbLight.className = "w-12 h-12 rounded-lg border-2 border-transparent hover:border-[#1a73e8] overflow-hidden shadow-sm bg-gray-100 flex items-center justify-center text-gray-700";
 
+      // Apply dynamic map style including dynamic road labels rules
+      const styledRules = getMapStyle(theme, streetLabelsVisible);
+      map.setOptions({ styles: styledRules });
+
       if (theme === 'dark') {
         map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
-        map.setOptions({ styles: DARK_MAP_STYLE });
         document.body.classList.add('dark-theme');
+        document.body.classList.remove('light-theme', 'satellite-theme');
         thumbDark.className = "w-12 h-12 rounded-lg border-2 border-[#1a73e8] overflow-hidden shadow-sm bg-gray-900 flex items-center justify-center text-white";
         showToast("Включена темная тема карты", "info");
       } else if (theme === 'light') {
         map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
-        map.setOptions({ styles: LIGHT_MAP_STYLE });
-        document.body.classList.remove('dark-theme');
+        document.body.classList.remove('dark-theme', 'satellite-theme');
+        document.body.classList.add('light-theme');
         thumbLight.className = "w-12 h-12 rounded-lg border-2 border-[#1a73e8] overflow-hidden shadow-sm bg-gray-100 flex items-center justify-center text-gray-700";
         showToast("Включена светлая тема карты", "info");
       } else if (theme === 'satellite') {
         map.setMapTypeId(google.maps.MapTypeId.HYBRID);
-        map.setOptions({ styles: HYBRID_MAP_STYLE });
-        document.body.classList.remove('dark-theme');
+        document.body.classList.add('satellite-theme');
+        document.body.classList.remove('dark-theme', 'light-theme');
         thumbSat.className = "w-12 h-12 rounded-lg border-2 border-[#1a73e8] overflow-hidden shadow-sm bg-cover bg-center";
         showToast("Включена спутниковая карта со стилизованными дорогами", "info");
       }
