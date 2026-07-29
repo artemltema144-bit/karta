@@ -603,10 +603,11 @@
 
       // Safely declare custom overlay class now that google namespace exists
       class GameStreetLabel extends google.maps.OverlayView {
-        constructor(position, text) {
+        constructor(position, text, angle = 0) {
           super();
           this.position = position;
           this.text = text;
+          this.angle = angle;
           this.div = null;
         }
 
@@ -629,6 +630,7 @@
 
           this.div.style.left = positionPixel.x + 'px';
           this.div.style.top = positionPixel.y + 'px';
+          this.div.style.transform = `translate(-50%, -50%) rotate(${this.angle}deg)`;
         }
 
         onRemove() {
@@ -651,49 +653,49 @@
       setupAutocomplete();
     }
 
-    // Custom street labels dataset (Central Kharkiv streets & locations using Google casing style)
+    // Custom street labels dataset (Central Kharkiv streets & locations with exact street-aligned rotation angles)
     function initStreetLabels() {
       const streetsData = [
-        { lat: 50.0001, lng: 36.2335, name: "ул. Сумская" },
-        { lat: 50.0022, lng: 36.2339, name: "ул. Сумская" },
-        { lat: 50.0050, lng: 36.2345, name: "ул. Сумская" },
-        { lat: 50.0076, lng: 36.2366, name: "ул. Сумская" },
-        { lat: 50.0150, lng: 36.2428, name: "ул. Сумская" },
+        { lat: 50.0001, lng: 36.2335, name: "ул. Сумская", angle: -78 },
+        { lat: 50.0022, lng: 36.2339, name: "ул. Сумская", angle: -78 },
+        { lat: 50.0050, lng: 36.2345, name: "ул. Сумская", angle: -78 },
+        { lat: 50.0076, lng: 36.2366, name: "ул. Сумская", angle: -78 },
+        { lat: 50.0150, lng: 36.2428, name: "ул. Сумская", angle: -78 },
 
-        { lat: 49.9958, lng: 36.2326, name: "пл. Конституции" },
-        { lat: 50.0044, lng: 36.2312, name: "пл. Свободы" },
-        { lat: 50.0058, lng: 36.2355, name: "пл. Свободы" },
+        { lat: 49.9958, lng: 36.2326, name: "пл. Конституции", angle: 0 },
+        { lat: 50.0044, lng: 36.2312, name: "пл. Свободы", angle: 0 },
+        { lat: 50.0058, lng: 36.2355, name: "пл. Свободы", angle: 0 },
 
-        { lat: 49.9985, lng: 36.2315, name: "ул. Рымарская" },
-        { lat: 50.0018, lng: 36.2323, name: "ул. Рымарская" },
+        { lat: 49.9985, lng: 36.2315, name: "ул. Рымарская", angle: -78 },
+        { lat: 50.0018, lng: 36.2323, name: "ул. Рымарская", angle: -78 },
 
-        { lat: 49.9995, lng: 36.2385, name: "ул. Григория Сковороды" },
-        { lat: 50.0040, lng: 36.2440, name: "ул. Григория Сковороды" },
-        { lat: 50.0090, lng: 36.2485, name: "ул. Григория Сковороды" },
+        { lat: 49.9995, lng: 36.2385, name: "ул. Григория Сковороды", angle: 48 },
+        { lat: 50.0040, lng: 36.2440, name: "ул. Григория Сковороды", angle: 48 },
+        { lat: 50.0090, lng: 36.2485, name: "ул. Григория Сковороды", angle: 48 },
 
-        { lat: 50.0015, lng: 36.2370, name: "ул. Чернышевская" },
-        { lat: 50.0060, lng: 36.2415, name: "ул. Чернышевская" },
+        { lat: 50.0015, lng: 36.2370, name: "ул. Чернышевская", angle: -78 },
+        { lat: 50.0060, lng: 36.2415, name: "ул. Чернышевская", angle: -78 },
 
-        { lat: 50.0020, lng: 36.2355, name: "ул. Мироносицкая" },
-        { lat: 50.0075, lng: 36.2400, name: "ул. Мироносицкая" },
+        { lat: 50.0020, lng: 36.2355, name: "ул. Мироносицкая", angle: -78 },
+        { lat: 50.0075, lng: 36.2400, name: "ул. Мироносицкая", angle: -78 },
 
-        { lat: 49.9990, lng: 36.2340, name: "ул. Гоголя" },
-        { lat: 50.0095, lng: 36.2345, name: "ул. Тринклера" },
+        { lat: 49.9990, lng: 36.2340, name: "ул. Гоголя", angle: -78 },
+        { lat: 50.0095, lng: 36.2345, name: "ул. Тринклера", angle: -85 },
 
-        { lat: 50.0065, lng: 36.2270, name: "просп. Науки" },
-        { lat: 50.0135, lng: 36.2230, name: "просп. Науки" },
+        { lat: 50.0065, lng: 36.2270, name: "просп. Науки", angle: -40 },
+        { lat: 50.0135, lng: 36.2230, name: "просп. Науки", angle: -40 },
 
-        { lat: 49.9960, lng: 36.2240, name: "ул. Клочковская" },
-        { lat: 50.0010, lng: 36.2235, name: "ул. Клочковская" },
+        { lat: 49.9960, lng: 36.2240, name: "ул. Клочковская", angle: -80 },
+        { lat: 50.0010, lng: 36.2235, name: "ул. Клочковская", angle: -80 },
 
-        { lat: 50.0085, lng: 36.2410, name: "ул. Ярослава Мудрого" },
-        { lat: 50.0030, lng: 36.2310, name: "сад им. Т. Г. Шевченко" },
-        { lat: 50.0175, lng: 36.2450, name: "Центральный парк" },
-        { lat: 50.0003, lng: 36.2345, name: "Театральная пл." }
+        { lat: 50.0085, lng: 36.2410, name: "ул. Ярослава Мудрого", angle: 10 },
+        { lat: 50.0030, lng: 36.2310, name: "сад им. Т. Г. Шевченко", angle: 0 },
+        { lat: 50.0175, lng: 36.2450, name: "Центральный парк", angle: 0 },
+        { lat: 50.0003, lng: 36.2345, name: "Театральная пл.", angle: 0 }
       ];
 
       streetsData.forEach(data => {
-        const label = new GameStreetLabelClass(new google.maps.LatLng(data.lat, data.lng), data.name);
+        const label = new GameStreetLabelClass(new google.maps.LatLng(data.lat, data.lng), data.name, data.angle || 0);
         label.setMap(map);
         streetLabels.push(label);
       });
