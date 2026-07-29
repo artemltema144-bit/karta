@@ -860,7 +860,10 @@
       const url = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${origin.lng()},${origin.lat()};${destination.lng()},${destination.lat()}?overview=full&geometries=geojson`;
 
       fetch(url)
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error("HTTP error " + res.status);
+          return res.json();
+        })
         .then(data => {
           if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
             const route = data.routes[0];
@@ -879,20 +882,30 @@
             document.getElementById('google-route-distance').innerText = `${distanceKm} км`;
             document.getElementById('google-route-duration').innerText = `${durationMin} мин`;
 
-            // Reverse geocode to show real road address names in search boxes
-            reverseGeocode(origin, (address) => {
-              document.getElementById('route-start-input').value = address;
-            });
-            reverseGeocode(destination, (address) => {
-              document.getElementById('route-end-input').value = address;
-            });
+            // Reverse geocode safely to show real road address names in search boxes
+            try {
+              reverseGeocode(origin, (address) => {
+                document.getElementById('route-start-input').value = address;
+              });
+            } catch(e) {
+              document.getElementById('route-start-input').value = `${origin.lat().toFixed(5)}, ${origin.lng().toFixed(5)}`;
+            }
+
+            try {
+              reverseGeocode(destination, (address) => {
+                document.getElementById('route-end-input').value = address;
+              });
+            } catch(e) {
+              document.getElementById('route-end-input').value = `${destination.lat().toFixed(5)}, ${destination.lng().toFixed(5)}`;
+            }
 
             showToast("Маршрут проложен по дорогам через OpenStreetMap", "success");
           } else {
             showToast("Ошибка построения маршрута по дорогам.", "error");
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error("OSRM Route fetch error:", err);
           showToast("Не удалось подключиться к серверу маршрутизации.", "error");
         });
     }
@@ -950,19 +963,39 @@
     }
 
     function fallbackGoogleGeocode(addressString, markerToUpdate) {
-      const geocoder = new google.maps.Geocoder();
-      geocoder.geocode({ address: addressString }, (results, status) => {
-        if (status === 'OK') {
-          markerToUpdate.setPosition(results[0].geometry.location);
-          map.panTo(results[0].geometry.location);
-          calculateRoute();
-        } else {
-          showToast("Адрес не найден", "error");
-        }
-      });
+      try {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ address: addressString }, (results, status) => {
+          if (status === 'OK') {
+            markerToUpdate.setPosition(results[0].geometry.location);
+            map.panTo(results[0].geometry.location);
+            calculateRoute();
+          } else {
+            showToast("Адрес не найден", "error");
+          }
+        });
+      } catch(e) {
+        showToast("Адрес не найден", "error");
+      }
     }
 
     function reverseGeocode(latLng, callback) {
+      try {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ location: latLng }, (results, status) => {
+          if (status === 'OK' && results[0]) {
+            callback(results[0].formatted_address);
+          } else {
+            // Fallback to OSM Nominatim reverse geocode
+            fallbackOSMReverseGeocode(latLng, callback);
+          }
+        });
+      } catch (err) {
+        fallbackOSMReverseGeocode(latLng, callback);
+      }
+    }
+
+    function fallbackOSMReverseGeocode(latLng, callback) {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latLng.lat()}&lon=${latLng.lng()}&addressdetails=1`;
 
       fetch(url, {
