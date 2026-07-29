@@ -1001,7 +1001,10 @@
           travelMode: google.maps.TravelMode.DRIVING
         }, (response, status) => {
           if (status === 'OK') {
-            directionsRenderer.setDirections(response);
+            if (directionsRenderer) {
+              directionsRenderer.setMap(map);
+              directionsRenderer.setDirections(response);
+            }
             const leg = response.routes[0].legs[0];
             updateRouteMetrics(leg);
           } else {
@@ -1018,59 +1021,71 @@
 
     // OSRM (OpenStreetMap) Road Routing integration
     function calculateOSRMRoute(origin, destination) {
-      // Using official OpenStreetMap community routed-car instance for guaranteed availability
-      const url = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${origin.lng()},${origin.lat()};${destination.lng()},${destination.lat()}?overview=full&geometries=geojson`;
+      // Try official OpenStreetMap routed-car endpoint first
+      const url1 = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${origin.lng()},${origin.lat()};${destination.lng()},${destination.lat()}?overview=full&geometries=geojson`;
+      // Alternative OSRM demo endpoint fallback
+      const url2 = `https://router.project-osrm.org/route/v1/driving/${origin.lng()},${origin.lat()};${destination.lng()},${destination.lat()}?overview=full&geometries=geojson`;
 
-      fetch(url)
+      fetch(url1)
         .then(res => {
-          if (!res.ok) throw new Error("HTTP error " + res.status);
+          if (!res.ok) throw new Error("OSM server failed");
           return res.json();
         })
-        .then(data => {
-          if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-            const route = data.routes[0];
-            const coordinates = route.geometry.coordinates;
-
-            // Convert [lng, lat] coordinates to Google LatLng points
-            const pathPoints = coordinates.map(coord => new google.maps.LatLng(coord[1], coord[0]));
-
-            // Draw road polyline
-            renderCustomRoutePolyline(pathPoints);
-
-            // Calculate OSRM distance and duration
-            const distanceKm = (route.distance / 1000).toFixed(1);
-            const durationMin = Math.round(route.duration / 60);
-
-            document.getElementById('google-route-distance').innerText = `${distanceKm} км`;
-            document.getElementById('google-route-duration').innerText = `${durationMin} мин`;
-
-            // Reverse geocode safely to show real road address names in search boxes
-            try {
-              reverseGeocode(origin, (address) => {
-                document.getElementById('route-start-input').value = address;
-              });
-            } catch(e) {
-              document.getElementById('route-start-input').value = `${origin.lat().toFixed(5)}, ${origin.lng().toFixed(5)}`;
-            }
-
-            try {
-              reverseGeocode(destination, (address) => {
-                document.getElementById('route-end-input').value = address;
-              });
-            } catch(e) {
-              document.getElementById('route-end-input').value = `${destination.lat().toFixed(5)}, ${destination.lng().toFixed(5)}`;
-            }
-
-            showToast("Маршрут проложен по дорогам через OpenStreetMap", "success");
-          } else {
-            // Fall back to local offline road graph
-            fallbackToLocalOfflineGraph(origin, destination);
-          }
-        })
-        .catch((err) => {
-          console.error("OSRM Route fetch error, falling back to local offline graph:", err);
-          fallbackToLocalOfflineGraph(origin, destination);
+        .then(data => handleOSRMResponse(data, origin, destination))
+        .catch(err => {
+          console.warn("Primary OSRM server failed, trying secondary router.project-osrm.org...", err);
+          fetch(url2)
+            .then(res => {
+              if (!res.ok) throw new Error("Secondary OSRM failed");
+              return res.json();
+            })
+            .then(data => handleOSRMResponse(data, origin, destination))
+            .catch(err2 => {
+              console.error("All OSRM routing fetches failed, falling back to local offline graph:", err2);
+              fallbackToLocalOfflineGraph(origin, destination);
+            });
         });
+    }
+
+    function handleOSRMResponse(data, origin, destination) {
+      if (data && data.code === 'Ok' && data.routes && data.routes.length > 0) {
+        const route = data.routes[0];
+        const coordinates = route.geometry.coordinates;
+
+        // Convert [lng, lat] coordinates to Google LatLng points
+        const pathPoints = coordinates.map(coord => new google.maps.LatLng(coord[1], coord[0]));
+
+        // Draw road polyline
+        renderCustomRoutePolyline(pathPoints);
+
+        // Calculate OSRM distance and duration
+        const distanceKm = (route.distance / 1000).toFixed(1);
+        const durationMin = Math.round(route.duration / 60);
+
+        document.getElementById('google-route-distance').innerText = `${distanceKm} км`;
+        document.getElementById('google-route-duration').innerText = `${durationMin} мин`;
+
+        // Reverse geocode safely to show real road address names in search boxes
+        try {
+          reverseGeocode(origin, (address) => {
+            document.getElementById('route-start-input').value = address;
+          });
+        } catch(e) {
+          document.getElementById('route-start-input').value = `${origin.lat().toFixed(5)}, ${origin.lng().toFixed(5)}`;
+        }
+
+        try {
+          reverseGeocode(destination, (address) => {
+            document.getElementById('route-end-input').value = address;
+          });
+        } catch(e) {
+          document.getElementById('route-end-input').value = `${destination.lat().toFixed(5)}, ${destination.lng().toFixed(5)}`;
+        }
+
+        showToast("Маршрут проложен по дорогам через OpenStreetMap", "success");
+      } else {
+        fallbackToLocalOfflineGraph(origin, destination);
+      }
     }
 
     function fallbackToLocalOfflineGraph(origin, destination) {
@@ -1093,11 +1108,14 @@
     }
 
     function renderCustomRoutePolyline(path) {
-      // Clear standard Google Directions paths
-      directionsRenderer.setDirections({ routes: [] });
+      // Safe official way to hide standard Google directions path without crashing setDirections
+      if (directionsRenderer) {
+        directionsRenderer.setMap(null);
+      }
 
       if (customRoutePolyline) {
         customRoutePolyline.setPath(path);
+        customRoutePolyline.setMap(map);
       } else {
         customRoutePolyline = new google.maps.Polyline({
           path: path,
