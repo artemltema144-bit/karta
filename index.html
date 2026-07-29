@@ -381,6 +381,137 @@
     let activeInputId = null;
     let autocompleteTimer = null;
 
+    // Kharkiv Center local road graph for bulletproof offline routing fallback
+    const ROAD_NODES = [
+      { id: "konstitutsii", lat: 49.9958, lng: 36.2326, name: "Площадь Конституции" },
+      { id: "sumska_mechnikova", lat: 49.9972, lng: 36.2329, name: "Сумская / Мечникова" },
+      { id: "sumska_teatralna", lat: 50.0003, lng: 36.2345, name: "Сумская / Театральный" },
+      { id: "sumska_zerkalna", lat: 50.0015, lng: 36.2338, name: "Сумская / Зеркальная Струя" },
+      { id: "sumska_svobody", lat: 50.0050, lng: 36.2345, name: "Сумская / Площадь Свободы" },
+      { id: "svobody_hosprom", lat: 50.0044, lng: 36.2312, name: "Площадь Свободы (Госпром)" },
+      { id: "nauki_svobody", lat: 50.0065, lng: 36.2270, name: "Проспект Науки" },
+      { id: "rymarska_start", lat: 49.9985, lng: 36.2315, name: "Рымарская (Начало)" },
+      { id: "rymarska_mid", lat: 50.0018, lng: 36.2323, name: "Рымарская (Середина)" },
+      { id: "skovorody_start", lat: 49.9995, lng: 36.2385, name: "Григория Сковороды (Начало)" },
+      { id: "skovorody_mid", lat: 50.0040, lng: 36.2440, name: "Григория Сковороды (Середина)" },
+      { id: "skovorody_mudroho", lat: 50.0085, lng: 36.2410, name: "Сковороды / Ярослава Мудрого" },
+      { id: "chernyshevska_start", lat: 50.0015, lng: 36.2370, name: "Чернышевская (Начало)" },
+      { id: "chernyshevska_svobody", lat: 50.0060, lng: 36.2415, name: "Чернышевская / Свободы" }
+    ];
+
+    const ROAD_EDGES = {
+      konstitutsii: ["sumska_mechnikova", "skovorody_start"],
+      sumska_mechnikova: ["konstitutsii", "sumska_teatralna", "rymarska_start"],
+      sumska_teatralna: ["sumska_mechnikova", "sumska_zerkalna", "chernyshevska_start"],
+      sumska_zerkalna: ["sumska_teatralna", "sumska_svobody"],
+      sumska_svobody: ["sumska_zerkalna", "svobody_hosprom", "chernyshevska_svobody"],
+      svobody_hosprom: ["sumska_svobody", "nauki_svobody", "rymarska_mid"],
+      nauki_svobody: ["svobody_hosprom"],
+      rymarska_start: ["sumska_mechnikova", "rymarska_mid"],
+      rymarska_mid: ["rymarska_start", "svobody_hosprom"],
+      skovorody_start: ["konstitutsii", "skovorody_mid"],
+      skovorody_mid: ["skovorody_start", "skovorody_mudroho"],
+      skovorody_mudroho: ["skovorody_mid", "chernyshevska_svobody"],
+      chernyshevska_start: ["sumska_teatralna", "chernyshevska_svobody"],
+      chernyshevska_svobody: ["chernyshevska_start", "skovorody_mudroho", "sumska_svobody"]
+    };
+
+    function getDistanceBetween(p1, p2) {
+      const latDiff = (typeof p1.lat === 'function' ? p1.lat() : p1.lat) - p2.lat;
+      const lngDiff = (typeof p1.lng === 'function' ? p1.lng() : p1.lng) - p2.lng;
+      return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
+    }
+
+    function dijkstra(startId, endId) {
+      const distances = {};
+      const previous = {};
+      const queue = [];
+
+      ROAD_NODES.forEach(node => {
+        distances[node.id] = Infinity;
+        previous[node.id] = null;
+        queue.push(node.id);
+      });
+
+      distances[startId] = 0;
+
+      while (queue.length > 0) {
+        queue.sort((a, b) => distances[a] - distances[b]);
+        const currentId = queue.shift();
+
+        if (currentId === endId) {
+          const path = [];
+          let temp = endId;
+          while (temp) {
+            path.push(temp);
+            temp = previous[temp];
+          }
+          return path.reverse();
+        }
+
+        if (distances[currentId] === Infinity) {
+          break;
+        }
+
+        const neighbors = ROAD_EDGES[currentId] || [];
+        neighbors.forEach(neighborId => {
+          if (queue.includes(neighborId)) {
+            const currNode = ROAD_NODES.find(n => n.id === currentId);
+            const neighNode = ROAD_NODES.find(n => n.id === neighborId);
+            const dist = getDistanceBetween({ lat: currNode.lat, lng: currNode.lng }, neighNode);
+            const alt = distances[currentId] + dist;
+            if (alt < distances[neighborId]) {
+              distances[neighborId] = alt;
+              previous[neighborId] = currentId;
+            }
+          }
+        });
+      }
+
+      return [startId, endId];
+    }
+
+    function findShortestLocalPath(startLatLng, endLatLng) {
+      let closestStartNode = null;
+      let minStartDist = Infinity;
+
+      let closestEndNode = null;
+      let minEndDist = Infinity;
+
+      ROAD_NODES.forEach(node => {
+        const dStart = getDistanceBetween(startLatLng, node);
+        if (dStart < minStartDist) {
+          minStartDist = dStart;
+          closestStartNode = node;
+        }
+        const dEnd = getDistanceBetween(endLatLng, node);
+        if (dEnd < minEndDist) {
+          minEndDist = dEnd;
+          closestEndNode = node;
+        }
+      });
+
+      const pathIds = dijkstra(closestStartNode.id, closestEndNode.id);
+      const pathCoords = [];
+
+      pathCoords.push(startLatLng);
+      pathIds.forEach(id => {
+        const node = ROAD_NODES.find(n => n.id === id);
+        pathCoords.push(new google.maps.LatLng(node.lat, node.lng));
+      });
+      pathCoords.push(endLatLng);
+
+      return pathCoords;
+    }
+
+    function calculateLatLngPathDistance(points) {
+      let totalMeters = 0;
+      for (let i = 0; i < points.length - 1; i++) {
+        totalMeters += google.maps.geometry.spherical.computeDistanceBetween(points[i], points[i + 1]);
+      }
+      return totalMeters;
+    }
+
     // Snazzy Maps Custom Minimal Grayscale Style (Dark Theme)
     const DARK_MAP_STYLE = [
       { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
@@ -907,13 +1038,33 @@
 
             showToast("Маршрут проложен по дорогам через OpenStreetMap", "success");
           } else {
-            showToast("Ошибка построения маршрута по дорогам.", "error");
+            // Fall back to local offline road graph
+            fallbackToLocalOfflineGraph(origin, destination);
           }
         })
         .catch((err) => {
-          console.error("OSRM Route fetch error:", err);
-          showToast("Не удалось подключиться к серверу маршрутизации.", "error");
+          console.error("OSRM Route fetch error, falling back to local offline graph:", err);
+          fallbackToLocalOfflineGraph(origin, destination);
         });
+    }
+
+    function fallbackToLocalOfflineGraph(origin, destination) {
+      try {
+        const localPath = findShortestLocalPath(origin, destination);
+        renderCustomRoutePolyline(localPath);
+
+        const totalMeters = calculateLatLngPathDistance(localPath);
+        const distanceKm = (totalMeters / 1000).toFixed(1);
+        const durationMin = Math.round((totalMeters / 1000) / 40 * 60 + 1); // 40 km/h average speed + 1 min base
+
+        document.getElementById('google-route-distance').innerText = `${distanceKm} км`;
+        document.getElementById('google-route-duration').innerText = `${durationMin} мин`;
+
+        showToast("Маршрут проложен по дорогам (Автономный граф)", "success");
+      } catch(localErr) {
+        console.error("Local offline routing failed:", localErr);
+        showToast("Не удалось подключиться к серверу маршрутизации.", "error");
+      }
     }
 
     function renderCustomRoutePolyline(path) {
