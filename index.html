@@ -158,7 +158,7 @@
           </div>
 
           <!-- Input fields -->
-          <div class="flex-1 flex flex-col gap-2">
+          <div class="flex-1 flex flex-col gap-2 relative">
             <!-- Starting Point Input A -->
             <div class="flex items-center bg-gray-50 hover:bg-gray-100 focus-within:bg-white focus-within:shadow-[0_0_0_2px_#1a73e8] border border-transparent rounded-md px-2.5 py-1.5 transition-all">
               <input type="text" id="route-start-input" placeholder="Выбор отправной точки..." class="w-full bg-transparent outline-none text-sm text-[#202124] placeholder-gray-500">
@@ -166,6 +166,11 @@
             <!-- Destination Point Input B -->
             <div class="flex items-center bg-gray-50 hover:bg-gray-100 focus-within:bg-white focus-within:shadow-[0_0_0_2px_#1a73e8] border border-transparent rounded-md px-2.5 py-1.5 transition-all">
               <input type="text" id="route-end-input" placeholder="Выбор пункта назначения..." class="w-full bg-transparent outline-none text-sm text-[#202124] placeholder-gray-500">
+            </div>
+
+            <!-- Real-World Address Autocomplete Floating Dropdown Menu -->
+            <div id="autocomplete-dropdown" class="hidden absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.15)] max-h-60 overflow-y-auto z-50 gmaps-scrollbar">
+              <!-- Dynamically populated autocomplete list rows -->
             </div>
           </div>
 
@@ -370,7 +375,11 @@
     let directionsRenderer;
     let startMarker;
     let endMarker;
+    let GameStreetLabelClass = null; // Defined safely inside initMap to prevent early extends undefined
+    let customRoutePolyline = null;
     let pannellumViewer = null;
+    let activeInputId = null;
+    let autocompleteTimer = null;
 
     // Snazzy Maps Custom Minimal Grayscale Style (Dark Theme)
     const DARK_MAP_STYLE = [
@@ -415,44 +424,6 @@
       { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#1e293b" }, { "weight": 4 }] }
     ];
 
-    // Custom Overlay View for Floating Street Labels
-    class GameStreetLabel extends google.maps.OverlayView {
-      constructor(position, text) {
-        super();
-        this.position = position;
-        this.text = text;
-        this.div = null;
-      }
-
-      onAdd() {
-        this.div = document.createElement('div');
-        this.div.className = 'street-badge';
-        this.div.innerText = this.text;
-
-        const panes = this.getPanes();
-        panes.overlayLayer.appendChild(this.div);
-      }
-
-      draw() {
-        if (!this.div) return;
-        const projection = this.getProjection();
-        if (!projection) return;
-
-        const positionPixel = projection.fromLatLngToDivPixel(this.position);
-        if (!positionPixel) return;
-
-        this.div.style.left = positionPixel.x + 'px';
-        this.div.style.top = positionPixel.y + 'px';
-      }
-
-      onRemove() {
-        if (this.div) {
-          this.div.parentNode.removeChild(this.div);
-          this.div = null;
-        }
-      }
-    }
-
     // Initialize Map
     function initMap() {
       const startCenter = { lat: 50.0050, lng: 36.2345 }; // Center near Sumska Street Kharkiv
@@ -465,6 +436,46 @@
         disableDefaultUI: true
       });
 
+      // Safely declare custom overlay class now that google namespace exists
+      class GameStreetLabel extends google.maps.OverlayView {
+        constructor(position, text) {
+          super();
+          this.position = position;
+          this.text = text;
+          this.div = null;
+        }
+
+        onAdd() {
+          this.div = document.createElement('div');
+          this.div.className = 'street-badge';
+          this.div.innerText = this.text;
+
+          const panes = this.getPanes();
+          panes.overlayLayer.appendChild(this.div);
+        }
+
+        draw() {
+          if (!this.div) return;
+          const projection = this.getProjection();
+          if (!projection) return;
+
+          const positionPixel = projection.fromLatLngToDivPixel(this.position);
+          if (!positionPixel) return;
+
+          this.div.style.left = positionPixel.x + 'px';
+          this.div.style.top = positionPixel.y + 'px';
+        }
+
+        onRemove() {
+          if (this.div) {
+            this.div.parentNode.removeChild(this.div);
+            this.div = null;
+          }
+        }
+      }
+
+      GameStreetLabelClass = GameStreetLabel;
+
       // Show welcome toast
       showToast("Карта успешно инициализирована!", "success");
 
@@ -472,6 +483,7 @@
       initStreetLabels();
       initPanoramaMarkers();
       initRoutingSystem();
+      setupAutocomplete();
     }
 
     // Custom street labels dataset (Central Kharkiv streets & locations)
@@ -516,7 +528,7 @@
       ];
 
       streetsData.forEach(data => {
-        const label = new GameStreetLabel(new google.maps.LatLng(data.lat, data.lng), data.name);
+        const label = new GameStreetLabelClass(new google.maps.LatLng(data.lat, data.lng), data.name);
         label.setMap(map);
         streetLabels.push(label);
       });
@@ -647,7 +659,109 @@
       }
     }
 
-    // Google Maps Draggable Routing Logic
+    // Real-world Nominatim & OSRM Routing and Autocomplete Setup
+    function setupAutocomplete() {
+      const startInput = document.getElementById('route-start-input');
+      const endInput = document.getElementById('route-end-input');
+      const dropdown = document.getElementById('autocomplete-dropdown');
+
+      [startInput, endInput].forEach(input => {
+        input.addEventListener('focus', (e) => {
+          activeInputId = e.target.id;
+          handleAutocompleteSearch(e.target.value);
+        });
+
+        input.addEventListener('input', (e) => {
+          activeInputId = e.target.id;
+          clearTimeout(autocompleteTimer);
+          autocompleteTimer = setTimeout(() => {
+            handleAutocompleteSearch(e.target.value);
+          }, 350);
+        });
+      });
+
+      // Close dropdown if clicked outside
+      document.addEventListener('click', (e) => {
+        if (!startInput.contains(e.target) && !endInput.contains(e.target) && !dropdown.contains(e.target)) {
+          dropdown.classList.add('hidden');
+        }
+      });
+    }
+
+    function handleAutocompleteSearch(query) {
+      const dropdown = document.getElementById('autocomplete-dropdown');
+      if (!query || query.length < 3) {
+        dropdown.innerHTML = '';
+        dropdown.classList.add('hidden');
+        return;
+      }
+
+      // Query OpenStreetMap Nominatim API for real addresses in Kharkiv
+      let searchQuery = query;
+      if (!query.toLowerCase().includes("харьков")) {
+        searchQuery = "Харьков " + query;
+      }
+
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&addressdetails=1`;
+
+      fetch(url, {
+        headers: { 'Accept-Language': 'ru, uk, en' }
+      })
+        .then(res => res.json())
+        .then(results => {
+          if (!results || results.length === 0) {
+            dropdown.innerHTML = '';
+            dropdown.classList.add('hidden');
+            return;
+          }
+
+          dropdown.innerHTML = '';
+          dropdown.classList.remove('hidden');
+
+          results.forEach(item => {
+            const row = document.createElement('div');
+            row.className = "flex items-start gap-3 px-3 py-2.5 hover:bg-gray-100 cursor-pointer transition-colors border-b border-gray-50 last:border-b-0";
+
+            const displayName = item.display_name;
+            const parts = displayName.split(',');
+            const mainName = parts[0].trim();
+            const subName = parts.slice(1).join(',').trim();
+
+            row.innerHTML = `
+              <div class="text-gray-400 mt-0.5 shrink-0">
+                <i class="fa-solid fa-location-dot text-sm"></i>
+              </div>
+              <div class="overflow-hidden">
+                <p class="text-xs font-semibold text-[#202124] truncate">${mainName}</p>
+                <p class="text-[10px] text-gray-500 truncate mt-0.5">${subName}</p>
+              </div>
+            `;
+
+            row.addEventListener('click', () => {
+              const targetInput = document.getElementById(activeInputId);
+              targetInput.value = displayName;
+
+              const latLng = new google.maps.LatLng(parseFloat(item.lat), parseFloat(item.lon));
+              if (activeInputId === 'route-start-input') {
+                startMarker.setPosition(latLng);
+              } else {
+                endMarker.setPosition(latLng);
+              }
+
+              map.panTo(latLng);
+              calculateRoute();
+              dropdown.classList.add('hidden');
+            });
+
+            dropdown.appendChild(row);
+          });
+        })
+        .catch(() => {
+          dropdown.classList.add('hidden');
+        });
+    }
+
+    // Google Maps Draggable Routing Logic with OSRM (OpenStreetMap Routing) Fallback
     function initRoutingSystem() {
       directionsService = new google.maps.DirectionsService();
 
@@ -701,7 +815,7 @@
         }
       });
 
-      // Synchronize input fields text changes
+      // Synchronize input fields text changes manually using geocoding
       document.getElementById('route-start-input').addEventListener('change', function() {
         geocodeAndSetMarker(this.value, startMarker);
       });
@@ -717,6 +831,12 @@
       const origin = startMarker.getPosition();
       const destination = endMarker.getPosition();
 
+      // Clear any custom OSRM polylines
+      if (customRoutePolyline) {
+        customRoutePolyline.setMap(null);
+        customRoutePolyline = null;
+      }
+
       directionsService.route({
         origin: origin,
         destination: destination,
@@ -727,9 +847,71 @@
           const leg = response.routes[0].legs[0];
           updateRouteMetrics(leg);
         } else {
-          showToast("Ошибка прокладки пути по дорогам.", "error");
+          // If Google Directions fails (no billing / keys limits), use OSRM (OpenStreetMap Routing) Fallback
+          console.warn("Google Directions Service failed. Falling back to OSRM.");
+          calculateOSRMRoute(origin, destination);
         }
       });
+    }
+
+    // OSRM (OpenStreetMap) Road Routing integration
+    function calculateOSRMRoute(origin, destination) {
+      const url = `https://router.project-osrm.org/route/v1/driving/${origin.lng()},${origin.lat()};${destination.lng()},${destination.lat()}?overview=full&geometries=geojson`;
+
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+            const route = data.routes[0];
+            const coordinates = route.geometry.coordinates;
+
+            // Convert [lng, lat] coordinates to Google LatLng points
+            const pathPoints = coordinates.map(coord => new google.maps.LatLng(coord[1], coord[0]));
+
+            // Draw road polyline
+            renderCustomRoutePolyline(pathPoints);
+
+            // Calculate OSRM distance and duration
+            const distanceKm = (route.distance / 1000).toFixed(1);
+            const durationMin = Math.round(route.duration / 60);
+
+            document.getElementById('google-route-distance').innerText = `${distanceKm} км`;
+            document.getElementById('google-route-duration').innerText = `${durationMin} мин`;
+
+            // Reverse geocode to show real road address names in search boxes
+            reverseGeocode(origin, (address) => {
+              document.getElementById('route-start-input').value = address;
+            });
+            reverseGeocode(destination, (address) => {
+              document.getElementById('route-end-input').value = address;
+            });
+
+            showToast("Маршрут проложен по дорогам через OpenStreetMap", "success");
+          } else {
+            showToast("Ошибка построения маршрута по дорогам.", "error");
+          }
+        })
+        .catch(() => {
+          showToast("Не удалось подключиться к серверу маршрутизации.", "error");
+        });
+    }
+
+    function renderCustomRoutePolyline(path) {
+      // Clear standard Google Directions paths
+      directionsRenderer.setDirections({ routes: [] });
+
+      if (customRoutePolyline) {
+        customRoutePolyline.setPath(path);
+      } else {
+        customRoutePolyline = new google.maps.Polyline({
+          path: path,
+          geodesic: true,
+          strokeColor: '#1a73e8',
+          strokeOpacity: 0.85,
+          strokeWeight: 6,
+          map: map
+        });
+      }
     }
 
     function updateRouteMetrics(leg) {
@@ -740,7 +922,33 @@
       document.getElementById('google-route-duration').innerText = leg.duration.text;
     }
 
+    // OSM Nominatim Geocoder & Reverse Geocoder Fallback
     function geocodeAndSetMarker(addressString, markerToUpdate) {
+      let searchQuery = addressString;
+      if (!addressString.toLowerCase().includes("харьков")) {
+        searchQuery = "Харьков " + addressString;
+      }
+
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`;
+
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.length > 0) {
+            const latLng = new google.maps.LatLng(parseFloat(data[0].lat), parseFloat(data[0].lon));
+            markerToUpdate.setPosition(latLng);
+            map.panTo(latLng);
+            calculateRoute();
+          } else {
+            fallbackGoogleGeocode(addressString, markerToUpdate);
+          }
+        })
+        .catch(() => {
+          fallbackGoogleGeocode(addressString, markerToUpdate);
+        });
+    }
+
+    function fallbackGoogleGeocode(addressString, markerToUpdate) {
       const geocoder = new google.maps.Geocoder();
       geocoder.geocode({ address: addressString }, (results, status) => {
         if (status === 'OK') {
@@ -751,6 +959,25 @@
           showToast("Адрес не найден", "error");
         }
       });
+    }
+
+    function reverseGeocode(latLng, callback) {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latLng.lat()}&lon=${latLng.lng()}&addressdetails=1`;
+
+      fetch(url, {
+        headers: { 'Accept-Language': 'ru, uk, en' }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.display_name) {
+            callback(data.display_name);
+          } else {
+            callback(`${latLng.lat().toFixed(5)}, ${latLng.lng().toFixed(5)}`);
+          }
+        })
+        .catch(() => {
+          callback(`${latLng.lat().toFixed(5)}, ${latLng.lng().toFixed(5)}`);
+        });
     }
 
     function swapRoutePoints() {
@@ -803,7 +1030,6 @@
           map.setZoom(16);
           showToast("Местоположение определено!", "success");
         }, () => {
-          // Default backup if geo is denied
           showToast("Доступ к геолокации запрещен. Перемещаемся в центр Харькова.", "info");
           teleportTo(50.0050, 36.2345, 16);
         });
