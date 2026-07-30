@@ -340,6 +340,7 @@
     let map;
     let currentTheme = 'satellite'; // 'satellite', 'dark', 'light'
     let streetLabelsVisible = true;
+    let streetLabelMarkers = [];
     let panoramaMarkers = [];
     let panoramaMarkersVisible = true;
     let directionsService;
@@ -350,6 +351,46 @@
     let pannellumViewer = null;
     let activeInputId = null;
     let autocompleteTimer = null;
+
+    // Custom street labels dataset in Russian (Central Kharkiv streets & locations)
+    const STREET_MARKERS_DATA = [
+      { lat: 50.0001, lng: 36.2335, name: "ул. Сумская" },
+      { lat: 50.0022, lng: 36.2339, name: "ул. Сумская" },
+      { lat: 50.0050, lng: 36.2345, name: "ул. Сумская" },
+      { lat: 50.0076, lng: 36.2366, name: "ул. Сумская" },
+      { lat: 50.0150, lng: 36.2428, name: "ул. Сумская" },
+
+      { lat: 49.9958, lng: 36.2326, name: "пл. Конституции" },
+      { lat: 50.0044, lng: 36.2312, name: "пл. Свободы" },
+      { lat: 50.0058, lng: 36.2355, name: "пл. Свободы" },
+
+      { lat: 49.9985, lng: 36.2315, name: "ул. Рымарская" },
+      { lat: 50.0018, lng: 36.2323, name: "ул. Рымарская" },
+
+      { lat: 49.9995, lng: 36.2385, name: "ул. Григория Сковороды" },
+      { lat: 50.0040, lng: 36.2440, name: "ул. Григория Сковороды" },
+      { lat: 50.0090, lng: 36.2485, name: "ул. Григория Сковороды" },
+
+      { lat: 50.0015, lng: 36.2370, name: "ул. Чернышевская" },
+      { lat: 50.0060, lng: 36.2415, name: "ул. Чернышевская" },
+
+      { lat: 50.0020, lng: 36.2355, name: "ул. Мироносицкая" },
+      { lat: 50.0075, lng: 36.2400, name: "ул. Мироносицкая" },
+
+      { lat: 49.9990, lng: 36.2340, name: "ул. Гоголя" },
+      { lat: 50.0095, lng: 36.2345, name: "ул. Тринклера" },
+
+      { lat: 50.0065, lng: 36.2270, name: "просп. Науки" },
+      { lat: 50.0135, lng: 36.2230, name: "просп. Науки" },
+
+      { lat: 49.9960, lng: 36.2240, name: "ул. Клочковская" },
+      { lat: 50.0010, lng: 36.2235, name: "ул. Клочковская" },
+
+      { lat: 50.0085, lng: 36.2410, name: "ул. Ярослава Мудрого" },
+      { lat: 50.0030, lng: 36.2310, name: "сад им. Т. Г. Шевченко" },
+      { lat: 50.0175, lng: 36.2450, name: "Центральный парк" },
+      { lat: 50.0003, lng: 36.2345, name: "Театральная пл." }
+    ];
 
     // Kharkiv Center local road graph for bulletproof offline routing fallback
     const ROAD_NODES = [
@@ -540,6 +581,41 @@
       }
     }
 
+    // Initialize Google-level high contrast Russian Street labels on the Map Canvas using invisible marker layers
+    function initStreetLabels() {
+      clearStreetLabels();
+
+      const labelColor = (currentTheme === 'light') ? '#4b5563' : '#e8eaed';
+
+      STREET_MARKERS_DATA.forEach(data => {
+        const marker = new google.maps.Marker({
+          position: { lat: data.lat, lng: data.lng },
+          map: streetLabelsVisible ? map : null,
+          clickable: false,
+          keyboardShortcut: false,
+          draggable: false,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 0 // invisible marker pin
+          },
+          label: {
+            text: data.name,
+            color: labelColor,
+            fontFamily: "'Roboto', 'Arial', sans-serif",
+            fontSize: "11px",
+            fontWeight: "500"
+          }
+        });
+
+        streetLabelMarkers.push(marker);
+      });
+    }
+
+    function clearStreetLabels() {
+      streetLabelMarkers.forEach(m => m.setMap(null));
+      streetLabelMarkers = [];
+    }
+
     // Initialize Map
     function initMap() {
       const startCenter = { lat: 50.0050, lng: 36.2345 }; // Center near Sumska Street Kharkiv
@@ -556,6 +632,7 @@
       showToast("Карта успешно инициализирована!", "success");
 
       // Initialize game features
+      initStreetLabels();
       initPanoramaMarkers();
       initRoutingSystem();
       setupAutocomplete();
@@ -564,6 +641,10 @@
     // Toggle custom labels visibility
     function toggleStreetLabels() {
       streetLabelsVisible = !streetLabelsVisible;
+
+      streetLabelMarkers.forEach(marker => {
+        marker.setMap(streetLabelsVisible ? map : null);
+      });
 
       const btn = document.getElementById('floating-toggle-labels');
       if (streetLabelsVisible) {
@@ -1168,6 +1249,16 @@
       // Apply dynamic map style including dynamic road labels rules
       const styledRules = getMapStyle(theme, streetLabelsVisible);
       map.setOptions({ styles: styledRules });
+
+      // Dynamically update Russian street labels color for high readability contrast
+      const labelColor = (theme === 'light') ? '#4b5563' : '#e8eaed';
+      streetLabelMarkers.forEach(marker => {
+        const lbl = marker.getLabel();
+        if (lbl) {
+          lbl.color = labelColor;
+          marker.setLabel(lbl);
+        }
+      });
 
       if (theme === 'dark') {
         map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
