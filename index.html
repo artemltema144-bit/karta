@@ -356,7 +356,6 @@
     let activeInputId = null;
     let autocompleteTimer = null;
 
-    let yandexLightMapType = null;
     let yandexLabelsOverlayType = null;
 
     // Kharkiv Center local road graph for bulletproof offline routing fallback
@@ -517,9 +516,6 @@
       if (theme === 'dark') {
         return [
           { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
-          { "featureType": "road", "elementType": "labels", "stylers": [{ "visibility": visibility }] },
-          { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#9ca3af" }] },
-          { "featureType": "road", "elementType": "labels.text.stroke", "stylers": [{ "color": "#1f2937" }, { "weight": 3 }] },
           { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0f172a" }] },
           { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
           { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#334155" }] },
@@ -528,9 +524,6 @@
       } else if (theme === 'light') {
         return [
           { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
-          { "featureType": "road", "elementType": "labels", "stylers": [{ "visibility": visibility }] },
-          { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#4b5563" }] },
-          { "featureType": "road", "elementType": "labels.text.stroke", "stylers": [{ "color": "#ffffff" }, { "weight": 3 }] },
           { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#cbd5e1" }] },
           { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#f1f5f9" }] },
           { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#ffffff" }] },
@@ -539,9 +532,6 @@
       } else if (theme === 'satellite') {
         return [
           { "featureType": "all", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
-          { "featureType": "road", "elementType": "labels", "stylers": [{ "visibility": visibility }] },
-          { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#f3f4f6" }] },
-          { "featureType": "road", "elementType": "labels.text.stroke", "stylers": [{ "color": "#111827" }, { "weight": 3 }] },
           { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#334155" }, { "weight": 2.5 }] },
           { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#1e293b" }, { "weight": 4 }] }
         ];
@@ -550,17 +540,6 @@
 
     // Initialize Google-level high contrast Russian Street labels on the Map Canvas using Yandex Layers
     function initCustomMapTypes() {
-      yandexLightMapType = new google.maps.ImageMapType({
-        getTileUrl: function(coord, zoom) {
-          const subdomains = ['1', '2', '3', '4'];
-          const s = subdomains[(coord.x + coord.y) % 4];
-          return `https://vec0${s}.maps.yandex.net/tiles?l=map&x=${coord.x}&y=${coord.y}&z=${zoom}&scale=1&lang=ru_RU`;
-        },
-        tileSize: new google.maps.Size(256, 256),
-        name: 'Яндекс Карты',
-        maxZoom: 19
-      });
-
       yandexLabelsOverlayType = new google.maps.ImageMapType({
         getTileUrl: function(coord, zoom) {
           const subdomains = ['1', '2', '3', '4'];
@@ -571,8 +550,6 @@
         name: 'Яндекс Подписи',
         maxZoom: 19
       });
-
-      map.mapTypes.set('yandex_light', yandexLightMapType);
     }
 
     // Initialize Map
@@ -1211,22 +1188,31 @@
       thumbDark.className = "w-12 h-12 rounded-lg border-2 border-transparent hover:border-[#1a73e8] overflow-hidden shadow-sm bg-gray-900 flex items-center justify-center text-white";
       thumbLight.className = "w-12 h-12 rounded-lg border-2 border-transparent hover:border-[#1a73e8] overflow-hidden shadow-sm bg-gray-100 flex items-center justify-center text-gray-700";
 
+      // Apply Google Map Styles (which hide standard Google labels)
+      const styledRules = getMapStyle(theme, false);
+      map.setOptions({ styles: styledRules });
+
       if (theme === 'dark') {
-        map.setMapTypeId('yandex_light');
-        mapContainer.classList.add('dark-theme-map');
+        map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+        if (streetLabelsVisible && yandexLabelsOverlayType) {
+          map.overlayMapTypes.push(yandexLabelsOverlayType);
+        }
         document.body.classList.add('dark-theme');
         document.body.classList.remove('light-theme', 'satellite-theme');
         thumbDark.className = "w-12 h-12 rounded-lg border-2 border-[#1a73e8] overflow-hidden shadow-sm bg-gray-900 flex items-center justify-center text-white";
         showToast("Включена темная тема карты", "info");
       } else if (theme === 'light') {
-        map.setMapTypeId('yandex_light');
+        map.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+        if (streetLabelsVisible && yandexLabelsOverlayType) {
+          map.overlayMapTypes.push(yandexLabelsOverlayType);
+        }
         document.body.classList.remove('dark-theme', 'satellite-theme');
         document.body.classList.add('light-theme');
         thumbLight.className = "w-12 h-12 rounded-lg border-2 border-[#1a73e8] overflow-hidden shadow-sm bg-gray-100 flex items-center justify-center text-gray-700";
         showToast("Включена светлая тема карты", "info");
       } else if (theme === 'satellite') {
-        // Use Google's high resolution satellite base map, with Yandex transparent Russian labels overlayed on top!
-        map.setMapTypeId(google.maps.MapTypeId.SATELLITE);
+        // Use Google's HYBRID map type (satellite imagery + styled road geometries)
+        map.setMapTypeId(google.maps.MapTypeId.HYBRID);
         if (streetLabelsVisible && yandexLabelsOverlayType) {
           map.overlayMapTypes.push(yandexLabelsOverlayType);
         }
